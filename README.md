@@ -73,8 +73,8 @@ Clay exposes two surfaces that this repo plugs into Claude Code:
   `execute_clay_action`).
 
 The playbook the agent follows lives in `CLAUDE.md`. In short: it authenticates, searches
-Clay for your ICP (free), builds a workflow that chains Enrich Company, find people or job
-titles, and Work Email, adds an HTTP API node that POSTs each enriched record to your
+Clay for your ICP (free), builds a workflow that chains a company enrichment action, a
+people or email action, and an HTTP API node that POSTs each enriched record to your
 webhook, then runs your found leads through it and reports the credits spent. It discovers
 the real actions in your workspace rather than guessing, and it asks you to choose when
 several actions do the same job.

@@ -119,52 +119,70 @@ Enrichment lives in a Clay **workflow** made of tool nodes, each running one Cla
 
    This returns `{ id, name, url, ... }`. Post the `url` to the user immediately.
 
-2. Discover the enrichment actions this workspace has:
+2. Discover the enrichment actions this workspace has. The catalog holds two different
+   kinds of thing, and they wire differently, so do not mix them up:
+   - **Actions** carry `actionKey`, `packageId`, and `creditCost`. These are what you wire
+     into a tool node and what `execute_clay_action` can test.
+   - **Functions** are entries with `type: "function"` and a `functionId`, no `actionKey`.
+     The native unified "Enrich Company" and "Work Email" are functions. They wire only via
+     `{ "toolType": "clay_function", "tableId": "<functionId>" }` and **cannot** be
+     pre-tested with `execute_clay_action`. For a smooth first run, prefer actions.
+
+   List the real, wireable actions with their cost:
 
    ```bash
    clay workflows actions list > /tmp/clay-actions.json
-   jq -r '.data[] | select(.type=="function") | .name' /tmp/clay-actions.json
+   jq -r '.data[] | select(.actionKey) | "\(.displayName)\t\(.actionKey)\t\(.packageId)\t\(.creditCost)cr"' /tmp/clay-actions.json
    ```
 
-   The built in Clay enrichments you will typically want:
-   - **Emails**: "Work Email", "Enrich Person and Find Contact Details"
-   - **Roles / contacts**: "Person Job Title", "Find People at Company", "Enrich Person"
-   - **Firmographics**: "Enrich Company", "Company Industry", "Company Employee Count",
-     "Company Revenue (Exact)"
+   Good starting actions that bill Clay credits and need no own API key:
+   - **Company firmographics**: People Data Labs `pdl-enrich-company-v3` (3cr), Store Leads
+     `storeleads-enrich-company-v2` (1cr), Datagma (2cr). Pick one.
+   - **People / email**: pick a provider people or email action from the same list. (The
+     native "Work Email" and "Enrich Person" are functions, see above, harder to test, so
+     for a first run a provider action is simpler.)
 
-   When more than one action does roughly the same thing (there are many email finders),
-   do not pick silently. List the human readable options with their credit cost and let the
-   user choose.
+   When several actions do the same job (there are many email finders), do not pick
+   silently. List the human readable options with their credit cost and let the user choose.
 
-3. Before wiring any action, test it once to confirm it is available and to see the real
-   output field names, using the MCP tool `execute_clay_action` on a single sample record
-   (for example one domain from Step C). Enrich (tool) node output is wrapped in a
-   `toolResult` envelope, so downstream references are `$.toolResult.result.<field>`.
+3. Before wiring an action, test it once with the MCP tool `execute_clay_action` on one
+   sample record (for example `stripe.com`) to confirm it is available and to see the real
+   output field names. `execute_clay_action` needs both `actionPackageId` (that is the
+   catalog's `packageId`) and `actionKey`. Enrich node output is wrapped in a `toolResult`
+   envelope, so downstream references are `$.toolResult.result.<field>`.
 
 4. Build the graph node by node with the MCP `edit_node` tool. A tool node has
-   `nodeType: "tool"` and exactly one entry in `tools` with the action's `actionKey` and
-   `actionPackageId` (read them from the catalog in step 2). Wire each action's inputs with
+   `nodeType: "tool"` and one entry in `tools` carrying `actionKey` + `actionPackageId`
+   (same value the catalog calls `packageId`). Wire each action's inputs with
    `inputMappingConfig` (`static` or `reference` values, `{{variable}}` references to
    upstream output). A minimal chain:
-   - Node 1: Enrich Company (input: the company domain)
-   - Node 2: Find People at Company or Person Job Title (input: the enriched company)
-   - Node 3: Work Email (input: the person)
-   - Node 4: push out (see Step E)
+   - Node 1: a company enrich action (input: the company domain)
+   - Node 2 (optional): a people or email action (input: the enriched company)
+   - Node 3: push out (see Step E)
 
-5. Validate and show the graph:
-
-   ```bash
-   # via the MCP validate_workflow tool with prettier=true to auto-layout, then:
-   clay workflows diagram <workflowId>
-   ```
+5. Validate and inspect the graph with the MCP `validate_workflow` tool (`prettier=true` to
+   auto-layout), then `read` the workflow to confirm the nodes and their pins.
 
 ## Step E: push the enriched records to the webhook
 
 Add a final tool node that sends each enriched record to the user's push target. Use the
 Clay **"HTTP API"** action (`actionKey: http-api-v2`, package "Clay"): method `POST`, URL
 set to the user's webhook URL, body built from the enriched fields
-(`$.toolResult.result.<field>` from the upstream enrichment nodes). Confirm the exact input
-schema with `execute_clay_action` before wiring it.
+(`$.toolResult.result.<field>` from the upstream nodes). Confirm the input schema with
+`execute_clay_action` before wiring it.
+
+Two things to get right on the HTTP API node:
+
+- **Object-typed inputs (headers, query params) cannot be set as a static object.** The
+  `static` input type only accepts string, number, boolean, or array, so a value like
+  `{ "Content-Type": "application/json" }` is rejected. Leave `headers` empty, or set
+  individual string values, instead of passing an object.
+- **Check the account bound to the node before you push anywhere real (security).** Clay may
+  auto-bind an existing workspace "HTTP API account" that carries an `Authorization: Bearer`
+  token, and it will attach that header to your outbound call. If your push target is a
+  third party (Zapier, Make, n8n, a partner endpoint), that token would be sent to them.
+  Unbind the account, or use a clean one, before pushing to any external URL. Only keep a
+  bound account when the destination is your own trusted endpoint.
 
 If the user would rather Clay **receive** leads (an inbound trigger) instead of pushing out,
 that is a separate concept: `clay webhooks create <url>` returns a signing secret exactly
