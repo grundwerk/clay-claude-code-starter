@@ -83,6 +83,40 @@ One design note: **Clay tables can only be created in the Clay UI.** The CLI and
 create a table. So this starter is built entirely around Clay **workflows**, **search**, and
 **webhooks**, none of which need a UI created table.
 
+## See it work
+
+Point it at an ICP like "software companies in the United States, 50 to 200 people" and it runs a free Clay search, then enriches each company. Here is a real enriched record from a test run against `stripe.com`:
+
+```
+display_name:      Stripe
+employee_count:    11332
+size:              1001-5000
+industry:          internet
+founded:           2010
+inferred_revenue:  $1B - $10B
+country:           united states
+linkedin_url:      linkedin.com/company/stripe
+```
+
+That is the shape of what lands on your webhook for every company, plus work emails for the people you asked for.
+
+## Recommended enrichment stack
+
+You do not have to guess which Clay actions to use. These bill Clay credits, need no API key of your own, and cover the pull, enrich, push flow:
+
+| Job | Clay action | Cost |
+|-----|-------------|------|
+| Company firmographics | People Data Labs `pdl-enrich-company-v3` | 3 credits |
+| Company firmographics (cheaper) | Store Leads `storeleads-enrich-company-v2` | 1 credit |
+| Company firmographics (alternative) | Datagma | 2 credits |
+| Push out to your webhook | Clay `HTTP API` (`http-api-v2`) | free |
+
+Search is free. Pick one company enricher plus a people or email action, and the agent wires them for you. When several actions do the same job, it lists them with cost and lets you choose.
+
+## The setup prompt
+
+You do not have to write a prompt. Type `/setup-clay` in Claude Code, or copy the ready made prompt in [`PROMPT.md`](PROMPT.md).
+
 ## Costs
 
 Be clear on this before you run anything:
